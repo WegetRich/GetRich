@@ -34,12 +34,23 @@ article h2{font-size:17px;margin:0 0 6px;line-height:1.3}
 <div class="tick" aria-label="Kurse in US-Dollar"><div id="tk">Kurse laden …</div></div>
 <main id="list"></main>
 <script>
+const RSS={
+ crypto:['https://feeds.finance.yahoo.com/rss/2.0/headline?s=BTC-USD,ETH-USD&region=US&lang=en-US','https://news.google.com/rss/search?q=bitcoin+OR+crypto&hl=en-US&gl=US&ceid=US:en','https://www.coindesk.com/arc/outboundfeeds/rss/','https://cointelegraph.com/rss','https://decrypt.co/feed','https://bitcoinmagazine.com/feed'],
+ stocks:['https://finance.yahoo.com/news/rssindex','https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664','https://feeds.marketwatch.com/marketwatch/topstories/']
+};
+async function viaJson(u){const j=await(await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(u))).json();if(!j.items||!j.items.length)throw 0;
+ return j.items.map(n=>({t:n.title,u:n.link,s:(j.feed&&j.feed.title)||'News',d:Date.parse(String(n.pubDate).replace(' ','T')+'Z')||Date.now()}))}
+async function viaProxy(u){const x=await(await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(u))).text();
+ const d=new DOMParser().parseFromString(x,'text/xml');const nm=new URL(u).hostname.replace('www.','');
+ const r=[...d.querySelectorAll('item')].map(i=>({t:i.querySelector('title').textContent,u:i.querySelector('link').textContent,s:nm,d:Date.parse(i.querySelector('pubDate')?.textContent)||Date.now()}));
+ if(!r.length)throw 0;return r}
+const one=async u=>{try{return await viaJson(u)}catch(e){return await viaProxy(u)}};
+async function merge(a,urls){const r=await Promise.allSettled(urls.map(one));r.forEach(x=>{if(x.status==='fulfilled')a.push(...x.value)});return a.sort((p,q)=>q.d-p.d)}
 const FEEDS={
- crypto:async()=>{const r=await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN');const j=await r.json();
-  return j.Data.map(n=>({t:n.title,u:n.url,s:n.source_info?.name||n.source,d:n.published_on*1000}))},
- stocks:async()=>{const urls=['https://finance.yahoo.com/news/rssindex','https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664'];
-  const all=await Promise.allSettled(urls.map(u=>fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(u)).then(r=>r.json())));
-  return all.flatMap(x=>x.status==='fulfilled'&&x.value.items?x.value.items.map(n=>({t:n.title,u:n.link,s:x.value.feed.title,d:new Date(n.pubDate.replace(' ','T')+'Z').getTime()})):[]).sort((a,b)=>b.d-a.d)}
+ crypto:async()=>{let a=[];try{const j=await(await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN')).json();
+  a=j.Data.map(n=>({t:n.title,u:n.url,s:(n.source_info&&n.source_info.name)||n.source,d:n.published_on*1000}))}catch(e){}
+  return merge(a,RSS.crypto)},
+ stocks:()=>merge([],RSS.stocks)
 };
 let tab='crypto';const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
